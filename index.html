@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Câmera Simples</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <h1>App Câmera PWA</h1>
+
+        <!-- Área de Visualização (Video ou Imagem) -->
+        <div id="viewArea">
+            <video id="videoStream" autoplay playsinline></video>
+            <img id="capturedImage" src="" alt="Imagem Capturada" style="display: none;">
+        </div>
+
+        <!-- Botões de Ação -->
+        <div id="buttonGroup">
+            <!-- Botão Voltar (visível quando a foto foi tirada) -->
+            <button id="backButton" style="display: none;">&larr; Voltar para Câmera</button>
+
+            <!-- Botões de Ação Primária -->
+            <button id="captureButton">Tirar Foto</button>
+            <button id="downloadButton" style="display: none;">Baixar Foto</button>
+        </div>
+
+        <p id="statusMessage" style="margin-top: 15px; color: #d9534f;"></p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="script.js"></script>
+</body>
+</html>
